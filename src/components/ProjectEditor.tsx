@@ -8,9 +8,20 @@ interface ProjectEditorProps {
   onUpdate: (project: ArchitecturalProject) => void;
   source: "ai" | "fallback";
   error?: string;
+  roofVisible: boolean;
+  onToggleRoof: () => void;
 }
 
-export default function ProjectEditor({ project, onUpdate, source, error }: ProjectEditorProps) {
+const FEATURE_LABELS: Record<string, string> = {
+  garage: "Garagem",
+  balcony: "Varanda",
+  pool: "Piscina",
+  garden: "Jardim",
+  stairs: "Escada",
+  terrace: "Terraço",
+};
+
+export default function ProjectEditor({ project, onUpdate, source, error, roofVisible, onToggleRoof }: ProjectEditorProps) {
   const [showJson, setShowJson] = useState(false);
 
   const updateField = <K extends keyof ArchitecturalProject>(key: K, value: ArchitecturalProject[K]) => {
@@ -37,7 +48,7 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
         {error && <small className="error-msg">{error}</small>}
       </div>
 
-      {/* General */}
+      {/* Geral */}
       <section>
         <h3>Geral</h3>
         <div className="field">
@@ -48,19 +59,8 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
           >
             <option value="house">Casa</option>
             <option value="duplex">Duplex</option>
-            <option value="townhouse">Townhouse</option>
+            <option value="townhouse">Sobrado geminado</option>
           </select>
-        </div>
-        <div className="field">
-          <label>Pavimentos: {project.stories}</label>
-          <input
-            type="range"
-            min={1}
-            max={4}
-            step={1}
-            value={project.stories}
-            onChange={(e) => updateField("stories", parseInt(e.target.value))}
-          />
         </div>
         <div className="field">
           <label>Estilo</label>
@@ -71,14 +71,14 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
             <option value="modern">Moderno</option>
             <option value="colonial">Colonial</option>
             <option value="minimal">Minimalista</option>
-            <option value="contemporary">Contemporaneo</option>
+            <option value="contemporary">Contemporâneo</option>
           </select>
         </div>
       </section>
 
-      {/* Dimensions */}
+      {/* Dimensões */}
       <section>
-        <h3>Dimensoes</h3>
+        <h3>Dimensões</h3>
         <div className="field">
           <label>Lote: {project.lot.width}m x {project.lot.depth}m</label>
           <input
@@ -99,7 +99,7 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
           />
         </div>
         <div className="field">
-          <label>Footprint: {project.footprint.width}m x {project.footprint.depth}m</label>
+          <label>Projeção: {project.footprint.width}m x {project.footprint.depth}m</label>
           <input
             type="range"
             min={5}
@@ -119,19 +119,19 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
         </div>
       </section>
 
-      {/* Roof */}
+      {/* Cobertura */}
       <section>
         <h3>Cobertura</h3>
         <div className="field">
           <label>Tipo</label>
           <select value={project.roof.type} onChange={(e) => updateRoof("type", e.target.value)}>
             <option value="flat">Plana</option>
-            <option value="gable">Duas aguas</option>
-            <option value="hip">Quatro aguas</option>
+            <option value="gable">Duas águas</option>
+            <option value="hip">Quatro águas</option>
           </select>
         </div>
         <div className="field">
-          <label>Inclinacao: {project.roof.slope}°</label>
+          <label>Inclinação: {project.roof.slope}°</label>
           <input
             type="range"
             min={0}
@@ -141,33 +141,36 @@ export default function ProjectEditor({ project, onUpdate, source, error }: Proj
             onChange={(e) => updateRoof("slope", parseFloat(e.target.value))}
           />
         </div>
+        <button className="toggle-roof-btn" onClick={onToggleRoof}>
+          {roofVisible ? "Ocultar Telhado" : "Mostrar Telhado"}
+        </button>
       </section>
 
-      {/* Rooms list */}
+      {/* Cômodos */}
       <section>
-        <h3>Comodos ({project.rooms.length})</h3>
+        <h3>Cômodos ({project.rooms.length})</h3>
         <ul className="rooms-list">
           {project.rooms.map((room, i) => (
             <li key={i}>
-              <strong>{room.name}</strong> — P{room.floor} — {room.width}x{room.depth}m
+              <strong>{room.name}</strong> — {room.width}x{room.depth}m
             </li>
           ))}
         </ul>
       </section>
 
-      {/* Features */}
+      {/* Características */}
       {project.features.length > 0 && (
         <section>
-          <h3>Features</h3>
+          <h3>Características</h3>
           <div className="tags">
             {project.features.map((f) => (
-              <span key={f} className="tag">{f}</span>
+              <span key={f} className="tag">{FEATURE_LABELS[f] || f}</span>
             ))}
           </div>
         </section>
       )}
 
-      {/* Assumptions */}
+      {/* Premissas */}
       {project.assumptions.length > 0 && (
         <section>
           <h3>Premissas</h3>

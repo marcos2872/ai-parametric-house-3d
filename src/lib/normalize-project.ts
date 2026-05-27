@@ -24,16 +24,14 @@ export function normalizeRawProject(raw: any): any {
     raw.footprint.depth = clamp(Number(raw.footprint.depth) || 12, 3, 80);
   }
 
-  // Normalize stories
-  if (raw.stories != null) {
-    raw.stories = clamp(Math.round(Number(raw.stories) || 1), 1, 4);
-  }
+  // Normalize stories — always single story
+  raw.stories = 1;
 
   // Normalize rooms
   if (Array.isArray(raw.rooms)) {
     raw.rooms = raw.rooms.map((room: Record<string, unknown>) => ({
       ...room,
-      floor: Math.max(0, Math.round(Number(room.floor) || 0)),
+      floor: 0,  // always ground floor
       x: Number(room.x) || 0,
       z: Number(room.z) || 0,
       width: clamp(Number(room.width) || 3, 0.8, 20),

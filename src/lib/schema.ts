@@ -73,7 +73,7 @@ export const Feature = z.enum(["garage", "balcony", "pool", "garden", "stairs", 
 
 export const ArchitecturalProjectSchema = z.object({
   buildingType: BuildingType.default("house"),
-  stories: z.number().int().min(1).max(4).default(1),
+  stories: z.number().int().min(1).max(1).default(1),
   style: BuildingStyle.default("modern"),
   lot: LotSchema,
   footprint: FootprintSchema,

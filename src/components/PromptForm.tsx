@@ -18,19 +18,19 @@ export default function PromptForm({ onGenerate, isLoading }: PromptFormProps) {
   };
 
   const examples = [
-    "Sobrado moderno com garagem, 3 quartos e varanda",
-    "Casa terrea minimalista com 2 quartos e jardim",
+    "Casa moderna com garagem, 3 quartos e varanda",
+    "Casa térrea minimalista com 2 quartos e jardim",
     "Casa colonial com 4 quartos e piscina",
   ];
 
   return (
     <form onSubmit={handleSubmit} className="prompt-form">
-      <label htmlFor="prompt-input">Descreva a edificacao:</label>
+      <label htmlFor="prompt-input">Descreva a edificação:</label>
       <textarea
         id="prompt-input"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ex: sobrado moderno com garagem, 3 quartos e varanda"
+        placeholder="Ex: casa moderna com garagem, 3 quartos e varanda"
         rows={3}
         maxLength={2000}
         disabled={isLoading}

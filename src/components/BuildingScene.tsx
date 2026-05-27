@@ -317,7 +317,7 @@ function DeferredContent({ children }: { children: React.ReactNode }) {
 }
 
 // --- Building content ---
-function BuildingContent({ project }: { project: ArchitecturalProject }) {
+function BuildingContent({ project, roofVisible }: { project: ArchitecturalProject; roofVisible: boolean }) {
   const facadeMat = getMaterial(project.materials.facade);
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
   const centerX = project.footprint.width / 2;
@@ -330,7 +330,7 @@ function BuildingContent({ project }: { project: ArchitecturalProject }) {
       <MergedWalls project={project} facadeMat={facadeMat} />
       <WallsWithOpenings project={project} facadeMat={facadeMat} />
       <OpeningsGroup project={project} />
-      <ProceduralRoof project={project} />
+      {roofVisible && <ProceduralRoof project={project} />}
 
       {/* Pool */}
       {project.pool && <Pool pool={project.pool} />}
@@ -348,9 +348,10 @@ function BuildingContent({ project }: { project: ArchitecturalProject }) {
 // --- Main scene ---
 interface BuildingSceneProps {
   project: ArchitecturalProject | null;
+  roofVisible?: boolean;
 }
 
-export default function BuildingScene({ project }: BuildingSceneProps) {
+export default function BuildingScene({ project, roofVisible = true }: BuildingSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -389,7 +390,7 @@ export default function BuildingScene({ project }: BuildingSceneProps) {
 
         {project ? (
           <DeferredContent>
-            <BuildingContent project={project} />
+            <BuildingContent project={project} roofVisible={roofVisible} />
           </DeferredContent>
         ) : (
           <OrbitControls />

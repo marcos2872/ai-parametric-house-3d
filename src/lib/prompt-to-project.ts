@@ -11,7 +11,7 @@ Regras:
 - Nao invente elementos fora do schema.
 - Se faltar dado, use valores plausíveis para residencias brasileiras e preencha "assumptions".
 - Dimensoes em metros.
-- Pavimento terreo = floor 0.
+- SEMPRE gere casas TERREAS (1 pavimento). stories = 1. floor = 0 para todos os comodos.
 - Posicoes x e z sao relativas ao canto inferior esquerdo do footprint.
 - Nao sobreponha comodos.
 - Largura e profundidade minima de comodo: 0.8m (lavabo). Quartos e salas: minimo 2.5m.
@@ -23,13 +23,13 @@ Regras:
 Schema:
 {
   "buildingType": "house" | "duplex" | "townhouse",
-  "stories": number (1-4),
+  "stories": 1,
   "style": "modern" | "colonial" | "minimal" | "contemporary",
   "lot": { "width": number (min 5), "depth": number (min 5) },
   "footprint": { "width": number (min 3), "depth": number (min 3) },
   "rooms": [
     {
-      "name": string, "floor": number, "x": number, "z": number,
+      "name": string, "floor": 0, "x": number, "z": number,
       "width": number (min 0.8), "depth": number (min 0.8), "height": number (min 2.2, default 2.8),
       "floorMaterial": string (opcional: "porcelain_gray"|"porcelain_white"|"wood_floor"|"cement_burned"|"ceramic_white"),
       "wallColor": string (opcional, hex color)

@@ -324,6 +324,25 @@ html, body {
   color: #fff;
 }
 
+/* --- Toggle roof button --- */
+.toggle-roof-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  margin-top: 0.3rem;
+  width: 100%;
+}
+
+.toggle-roof-btn:hover {
+  background: var(--accent);
+  color: #0f0f1a;
+}
+
 /* --- Scrollbar --- */
 .sidebar::-webkit-scrollbar {
   width: 6px;

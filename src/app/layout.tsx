@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Civil 3D - Gerador Parametrico",
-  description: "Gerador parametrico de edificacoes com IA e Three.js",
+  title: "Civil 3D - Gerador Paramétrico",
+  description: "Gerador paramétrico de edificações com IA e Three.js",
 };
 
 export default function RootLayout({
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>{children}</body>
     </html>
   );

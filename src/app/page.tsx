@@ -54,6 +54,7 @@ export default function Home() {
   const [source, setSource] = useState<"ai" | "fallback">("fallback");
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [roofVisible, setRoofVisible] = useState(true);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -115,7 +116,7 @@ export default function Home() {
       {/* Sidebar */}
       <aside className="sidebar">
         <h1 className="app-title">Civil 3D</h1>
-        <p className="app-subtitle">Gerador Parametrico de Edificacoes</p>
+        <p className="app-subtitle">Gerador Paramétrico de Edificações</p>
 
         <PromptForm onGenerate={handleGenerate} isLoading={isLoading} />
 
@@ -126,6 +127,8 @@ export default function Home() {
               onUpdate={handleUpdate}
               source={source}
               error={error}
+              roofVisible={roofVisible}
+              onToggleRoof={() => setRoofVisible((v) => !v)}
             />
             <button className="delete-btn" onClick={handleDelete}>
               Excluir Projeto
@@ -136,7 +139,7 @@ export default function Home() {
 
       {/* 3D Viewport */}
       <main className="viewport">
-        <BuildingScene project={project} />
+        <BuildingScene project={project} roofVisible={roofVisible} />
       </main>
     </div>
   );

@@ -66,8 +66,7 @@ export function generateFallbackProject(prompt: string): ArchitecturalProject {
   const style = isColonial ? "colonial" : isModern ? "modern" : "modern";
   const defaults = STYLE_DEFAULTS[style];
 
-  const hasTwoFloors = /sobrado|2.*pav|two.*stor/i.test(prompt);
-  const stories = hasTwoFloors ? 2 : 1;
+  const stories = 1;
 
   const hasGarage = /garag/i.test(prompt);
   const hasBalcony = /varand|balcon/i.test(prompt);
@@ -79,7 +78,6 @@ export function generateFallbackProject(prompt: string): ArchitecturalProject {
   if (hasBalcony) features.push("balcony");
   if (hasPool) features.push("pool");
   if (hasGarden) features.push("garden");
-  if (stories > 1) features.push("stairs");
 
   const bedroomCount = prompt.match(/(\d+)\s*(quarto|bedroom|bed)/i);
   const numBedrooms = bedroomCount ? parseInt(bedroomCount[1], 10) : 2;
@@ -97,21 +95,21 @@ export function generateFallbackProject(prompt: string): ArchitecturalProject {
   for (let i = 0; i < numBedrooms; i++) {
     rooms.push({
       name: `bedroom_${i + 1}`,
-      floor: stories > 1 ? 1 : 0,
+      floor: 0,
       x: i * 3.5,
-      z: stories > 1 ? 0 : 5,
+      z: 5,
       width: 3.2,
       depth: 3.5,
       height: defaults.floorHeight,
     });
   }
 
-  if (stories > 1 || numBedrooms > 0) {
+  if (numBedrooms > 0) {
     rooms.push({
       name: "bathroom_suite",
-      floor: stories > 1 ? 1 : 0,
+      floor: 0,
       x: numBedrooms * 3.5,
-      z: stories > 1 ? 0 : 5,
+      z: 5,
       width: 2.5,
       depth: 2.5,
       height: defaults.floorHeight,
