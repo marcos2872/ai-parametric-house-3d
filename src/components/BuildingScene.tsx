@@ -1,88 +1,24 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from "@react-three/drei";
+import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import * as THREE from "three";
 import type { ArchitecturalProject, Room, Opening } from "@/lib/schema";
 import { STYLE_DEFAULTS } from "@/lib/defaults";
+import { getMaterial, type PBRMaterialDef } from "@/lib/material-system";
+
+// Sub-components
+import WindowMesh from "./three/WindowMesh";
+import DoorMesh from "./three/DoorMesh";
+import ProceduralRoof from "./three/ProceduralRoof";
+import Terrain from "./three/Terrain";
+import Pool from "./three/Pool";
+import Vegetation from "./three/Vegetation";
 
 // --- Constants ---
 const WALL_THICKNESS = 0.15;
 const SLAB_THICKNESS = 0.15;
-
-// --- Color mapping ---
-const MATERIAL_COLORS: Record<string, string> = {
-  concrete_white: "#f5f5f5",
-  concrete_gray: "#9e9e9e",
-  concrete_raw: "#bdbdbd",
-  plaster_beige: "#f5e6d3",
-  clay_tile: "#c75b39",
-  stucco_white: "#fafafa",
-  metal_dark: "#424242",
-  wood_brown: "#8d6e63",
-  aluminum_black: "#212121",
-  aluminum_gray: "#757575",
-  glass: "#b3e5fc",
-  "white plaster": "#f8f8f8",
-  concrete: "#a0a0a0",
-  "black aluminum": "#1a1a1a",
-};
-
-function getColor(material: string): string {
-  return MATERIAL_COLORS[material] || "#e0e0e0";
-}
-
-// --- Merged walls geometry (single draw call) ---
-function MergedWalls({ project, facadeColor }: { project: ArchitecturalProject; facadeColor: string }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
-
-  const geometry = React.useMemo(() => {
-    const geometries: THREE.BoxGeometry[] = [];
-    const matrices: THREE.Matrix4[] = [];
-
-    for (const room of project.rooms) {
-      const yBase = room.floor * styleDefaults.floorHeight;
-      const h = room.height;
-      const w = room.width;
-      const d = room.depth;
-      const t = WALL_THICKNESS;
-
-      const roomOpenings = project.openings.filter((o) => o.room === room.name);
-
-      const wallDefs = [
-        { dir: "south" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z, sx: w, sy: h, sz: t },
-        { dir: "north" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z + d, sx: w, sy: h, sz: t },
-        { dir: "west" as const, px: room.x, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
-        { dir: "east" as const, px: room.x + w, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
-      ];
-
-      for (const wall of wallDefs) {
-        const hasOpening = roomOpenings.some((o) => o.wall === wall.dir);
-        if (!hasOpening) {
-          const geo = new THREE.BoxGeometry(wall.sx, wall.sy, wall.sz);
-          const mat = new THREE.Matrix4().makeTranslation(wall.px, wall.py, wall.pz);
-          geo.applyMatrix4(mat);
-          geometries.push(geo);
-        }
-      }
-    }
-
-    if (geometries.length === 0) return new THREE.BufferGeometry();
-
-    const merged = mergeGeometries(geometries);
-    // Dispose individual geometries
-    geometries.forEach((g) => g.dispose());
-    return merged;
-  }, [project, styleDefaults]);
-
-  return (
-    <mesh ref={meshRef} geometry={geometry}>
-      <meshStandardMaterial color={facadeColor} />
-    </mesh>
-  );
-}
 
 // --- Simple merge geometries utility ---
 function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -134,11 +70,62 @@ function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return merged;
 }
 
-// We need React import for useMemo in MergedWalls
-import React from "react";
+// --- Merged walls geometry (single draw call) ---
+function MergedWalls({ project, facadeMat }: { project: ArchitecturalProject; facadeMat: PBRMaterialDef }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
 
-// --- Openings (doors/windows) as separate simple meshes ---
-function Openings({ project }: { project: ArchitecturalProject }) {
+  const geometry = useMemo(() => {
+    const geometries: THREE.BoxGeometry[] = [];
+
+    for (const room of project.rooms) {
+      const yBase = room.floor * styleDefaults.floorHeight;
+      const h = room.height;
+      const w = room.width;
+      const d = room.depth;
+      const t = WALL_THICKNESS;
+
+      const roomOpenings = project.openings.filter((o) => o.room === room.name);
+
+      const wallDefs = [
+        { dir: "south" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z, sx: w, sy: h, sz: t },
+        { dir: "north" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z + d, sx: w, sy: h, sz: t },
+        { dir: "west" as const, px: room.x, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
+        { dir: "east" as const, px: room.x + w, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
+      ];
+
+      for (const wall of wallDefs) {
+        const hasOpening = roomOpenings.some((o) => o.wall === wall.dir);
+        if (!hasOpening) {
+          const geo = new THREE.BoxGeometry(wall.sx, wall.sy, wall.sz);
+          const mat = new THREE.Matrix4().makeTranslation(wall.px, wall.py, wall.pz);
+          geo.applyMatrix4(mat);
+          geometries.push(geo);
+        }
+      }
+    }
+
+    if (geometries.length === 0) return new THREE.BufferGeometry();
+
+    const merged = mergeGeometries(geometries);
+    geometries.forEach((g) => g.dispose());
+    return merged;
+  }, [project, styleDefaults]);
+
+  return (
+    <mesh ref={meshRef} geometry={geometry}>
+      <meshStandardMaterial
+        color={facadeMat.color}
+        roughness={facadeMat.roughness}
+        metalness={facadeMat.metalness}
+        envMapIntensity={0.8}
+      />
+    </mesh>
+  );
+}
+
+// --- Openings (windows & doors) using proper geometry ---
+function OpeningsGroup({ project }: { project: ArchitecturalProject }) {
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
 
   if (project.openings.length === 0) return null;
@@ -151,7 +138,6 @@ function Openings({ project }: { project: ArchitecturalProject }) {
 
         const yBase = room.floor * styleDefaults.floorHeight;
         const isXWall = op.wall === "south" || op.wall === "north";
-        const t = WALL_THICKNESS;
 
         let px: number, py: number, pz: number;
         py = yBase + op.elevation + op.height / 2;
@@ -170,18 +156,26 @@ function Openings({ project }: { project: ArchitecturalProject }) {
           pz = room.z + room.depth / 2;
         }
 
-        const size: [number, number, number] = isXWall
-          ? [op.width, op.height, t + 0.02]
-          : [t + 0.02, op.height, op.width];
-
-        const color = op.type === "window" ? "#87ceeb" : "#5d4037";
-        const opacity = op.type === "window" ? 0.35 : 0.85;
+        if (op.type === "window") {
+          return (
+            <WindowMesh
+              key={`opening-${i}`}
+              opening={op}
+              position={[px, py, pz]}
+              isXWall={isXWall}
+              frameMaterial={project.materials.frames}
+            />
+          );
+        }
 
         return (
-          <mesh key={`opening-${i}`} position={[px, py, pz]}>
-            <boxGeometry args={size} />
-            <meshStandardMaterial color={color} transparent opacity={opacity} />
-          </mesh>
+          <DoorMesh
+            key={`opening-${i}`}
+            opening={op}
+            position={[px, py, pz]}
+            isXWall={isXWall}
+            frameMaterial={project.materials.frames}
+          />
         );
       })}
     </>
@@ -189,7 +183,7 @@ function Openings({ project }: { project: ArchitecturalProject }) {
 }
 
 // --- Wall segments around openings ---
-function WallsWithOpenings({ project, facadeColor }: { project: ArchitecturalProject; facadeColor: string }) {
+function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProject; facadeMat: PBRMaterialDef }) {
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
   const segments: React.ReactNode[] = [];
 
@@ -220,41 +214,29 @@ function WallsWithOpenings({ project, facadeColor }: { project: ArchitecturalPro
       const aboveH = h - (opElev + opH);
       if (aboveH > 0.05) {
         const ay = yBase + opElev + opH + aboveH / 2;
-        if (isXWall) {
-          segments.push(
-            <mesh key={`${room.name}-${op.wall}-above-${op.type}`} position={[wallPx, ay, wallPz]}>
-              <boxGeometry args={[wallLength, aboveH, t]} />
-              <meshStandardMaterial color={facadeColor} />
-            </mesh>
-          );
-        } else {
-          segments.push(
-            <mesh key={`${room.name}-${op.wall}-above-${op.type}`} position={[wallPx, ay, wallPz]}>
-              <boxGeometry args={[t, aboveH, wallLength]} />
-              <meshStandardMaterial color={facadeColor} />
-            </mesh>
-          );
-        }
+        const args: [number, number, number] = isXWall
+          ? [wallLength, aboveH, t]
+          : [t, aboveH, wallLength];
+        segments.push(
+          <mesh key={`${room.name}-${op.wall}-above-${op.type}`} position={[wallPx, ay, wallPz]}>
+            <boxGeometry args={args} />
+            <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+          </mesh>
+        );
       }
 
       // Below opening (peitoril)
       if (opElev > 0.05) {
         const by = yBase + opElev / 2;
-        if (isXWall) {
-          segments.push(
-            <mesh key={`${room.name}-${op.wall}-below-${op.type}`} position={[wallPx, by, wallPz]}>
-              <boxGeometry args={[wallLength, opElev, t]} />
-              <meshStandardMaterial color={facadeColor} />
-            </mesh>
-          );
-        } else {
-          segments.push(
-            <mesh key={`${room.name}-${op.wall}-below-${op.type}`} position={[wallPx, by, wallPz]}>
-              <boxGeometry args={[t, opElev, wallLength]} />
-              <meshStandardMaterial color={facadeColor} />
-            </mesh>
-          );
-        }
+        const args: [number, number, number] = isXWall
+          ? [wallLength, opElev, t]
+          : [t, opElev, wallLength];
+        segments.push(
+          <mesh key={`${room.name}-${op.wall}-below-${op.type}`} position={[wallPx, by, wallPz]}>
+            <boxGeometry args={args} />
+            <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+          </mesh>
+        );
       }
 
       // Left/right sides
@@ -265,26 +247,26 @@ function WallsWithOpenings({ project, facadeColor }: { project: ArchitecturalPro
           segments.push(
             <mesh key={`${room.name}-${op.wall}-left`} position={[wallPx - wallLength / 2 + sideW / 2, sideY, wallPz]}>
               <boxGeometry args={[sideW, opH, t]} />
-              <meshStandardMaterial color={facadeColor} />
+              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
             </mesh>
           );
           segments.push(
             <mesh key={`${room.name}-${op.wall}-right`} position={[wallPx + wallLength / 2 - sideW / 2, sideY, wallPz]}>
               <boxGeometry args={[sideW, opH, t]} />
-              <meshStandardMaterial color={facadeColor} />
+              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
             </mesh>
           );
         } else {
           segments.push(
             <mesh key={`${room.name}-${op.wall}-left`} position={[wallPx, sideY, wallPz - wallLength / 2 + sideW / 2]}>
               <boxGeometry args={[t, opH, sideW]} />
-              <meshStandardMaterial color={facadeColor} />
+              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
             </mesh>
           );
           segments.push(
             <mesh key={`${room.name}-${op.wall}-right`} position={[wallPx, sideY, wallPz + wallLength / 2 - sideW / 2]}>
               <boxGeometry args={[t, opH, sideW]} />
-              <meshStandardMaterial color={facadeColor} />
+              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
             </mesh>
           );
         }
@@ -295,78 +277,32 @@ function WallsWithOpenings({ project, facadeColor }: { project: ArchitecturalPro
   return <>{segments}</>;
 }
 
-// --- Floor slabs ---
+// --- Floor slabs with PBR materials ---
 function FloorSlabs({ project }: { project: ArchitecturalProject }) {
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
   return (
     <>
       {project.rooms.map((room) => {
         const yBase = room.floor * styleDefaults.floorHeight;
+        const floorMatName = room.floorMaterial || "porcelain_gray";
+        const floorMat = getMaterial(floorMatName);
         return (
-          <mesh key={`slab-${room.name}-${room.floor}`} position={[room.x + room.width / 2, yBase, room.z + room.depth / 2]}>
+          <mesh
+            key={`slab-${room.name}-${room.floor}`}
+            position={[room.x + room.width / 2, yBase, room.z + room.depth / 2]}
+            receiveShadow
+          >
             <boxGeometry args={[room.width, SLAB_THICKNESS, room.depth]} />
-            <meshStandardMaterial color="#d0d0d0" />
+            <meshStandardMaterial
+              color={floorMat.color}
+              roughness={floorMat.roughness}
+              metalness={floorMat.metalness}
+              envMapIntensity={0.5}
+            />
           </mesh>
         );
       })}
     </>
-  );
-}
-
-// --- Roof ---
-function RoofBlock({ project }: { project: ArchitecturalProject }) {
-  const { footprint, stories, roof } = project;
-  const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
-  const yPos = stories * styleDefaults.floorHeight + SLAB_THICKNESS;
-  const roofColor = getColor(project.materials.roof);
-  const overhang = roof.overhang;
-
-  if (roof.type === "flat") {
-    return (
-      <mesh position={[footprint.width / 2, yPos + 0.1, footprint.depth / 2]}>
-        <boxGeometry args={[footprint.width + overhang * 2, 0.2, footprint.depth + overhang * 2]} />
-        <meshStandardMaterial color={roofColor} />
-      </mesh>
-    );
-  }
-
-  if (roof.type === "gable") {
-    const roofHeight = Math.tan((roof.slope * Math.PI) / 180) * (footprint.depth / 2);
-    const roofWidth = footprint.width + overhang * 2;
-    const slopeRad = (roof.slope * Math.PI) / 180;
-    const panelLength = (footprint.depth / 2) / Math.cos(slopeRad);
-
-    return (
-      <group position={[footprint.width / 2, yPos, footprint.depth / 2]}>
-        <mesh position={[0, roofHeight / 2, -footprint.depth / 4]} rotation={[slopeRad, 0, 0]}>
-          <boxGeometry args={[roofWidth, 0.1, panelLength + overhang]} />
-          <meshStandardMaterial color={roofColor} />
-        </mesh>
-        <mesh position={[0, roofHeight / 2, footprint.depth / 4]} rotation={[-slopeRad, 0, 0]}>
-          <boxGeometry args={[roofWidth, 0.1, panelLength + overhang]} />
-          <meshStandardMaterial color={roofColor} />
-        </mesh>
-      </group>
-    );
-  }
-
-  // Hip
-  const roofHeight = Math.tan((roof.slope * Math.PI) / 180) * Math.min(footprint.width, footprint.depth) / 2;
-  return (
-    <mesh position={[footprint.width / 2, yPos + roofHeight / 2, footprint.depth / 2]}>
-      <coneGeometry args={[Math.max(footprint.width, footprint.depth) * 0.7, roofHeight, 4]} />
-      <meshStandardMaterial color={roofColor} />
-    </mesh>
-  );
-}
-
-// --- Lot ---
-function LotPlane({ project }: { project: ArchitecturalProject }) {
-  return (
-    <mesh position={[project.footprint.width / 2, -0.05, project.footprint.depth / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[project.lot.width, project.lot.depth]} />
-      <meshStandardMaterial color="#4a7c59" transparent opacity={0.3} side={THREE.DoubleSide} />
-    </mesh>
   );
 }
 
@@ -382,19 +318,28 @@ function DeferredContent({ children }: { children: React.ReactNode }) {
 
 // --- Building content ---
 function BuildingContent({ project }: { project: ArchitecturalProject }) {
-  const facadeColor = getColor(project.materials.facade);
+  const facadeMat = getMaterial(project.materials.facade);
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
   const centerX = project.footprint.width / 2;
   const centerZ = project.footprint.depth / 2;
 
   return (
     <>
-      <LotPlane project={project} />
+      <Terrain project={project} />
       <FloorSlabs project={project} />
-      <MergedWalls project={project} facadeColor={facadeColor} />
-      <WallsWithOpenings project={project} facadeColor={facadeColor} />
-      <Openings project={project} />
-      <RoofBlock project={project} />
+      <MergedWalls project={project} facadeMat={facadeMat} />
+      <WallsWithOpenings project={project} facadeMat={facadeMat} />
+      <OpeningsGroup project={project} />
+      <ProceduralRoof project={project} />
+
+      {/* Pool */}
+      {project.pool && <Pool pool={project.pool} />}
+
+      {/* Vegetation */}
+      {project.vegetation && project.vegetation.length > 0 && (
+        <Vegetation items={project.vegetation} />
+      )}
+
       <OrbitControls target={[centerX, styleDefaults.floorHeight, centerZ]} />
     </>
   );
@@ -412,14 +357,17 @@ export default function BuildingScene({ project }: BuildingSceneProps) {
     <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative" }}>
       <Canvas
         camera={{ position: [20, 12, 20], fov: 50 }}
-        style={{ background: "#1a1a2e" }}
-        gl={{ antialias: true, powerPreference: "default", failIfMajorPerformanceCaveat: false }}
+        style={{ background: "#0d1117" }}
+        gl={{
+          antialias: true,
+          powerPreference: "default",
+          failIfMajorPerformanceCaveat: false,
+        }}
         frameloop="demand"
         onCreated={({ gl, invalidate }) => {
-          // Switch to continuous after first frame
-          setTimeout(() => {
-            invalidate();
-          }, 100);
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.1;
+          setTimeout(() => invalidate(), 100);
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
@@ -429,8 +377,15 @@ export default function BuildingScene({ project }: BuildingSceneProps) {
           });
         }}
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[15, 20, 10]} intensity={0.7} />
+        {/* Lighting — multi-directional for soft look without env map */}
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[15, 25, 10]} intensity={0.9} color="#fff5e6" />
+        <directionalLight position={[-10, 15, -10]} intensity={0.3} color="#e6f0ff" />
+        <directionalLight position={[0, 10, 20]} intensity={0.2} color="#ffffff" />
+        <hemisphereLight args={["#87ceeb", "#4a7c3f", 0.3]} />
+
+        {/* Fog */}
+        <fog attach="fog" args={["#0d1117", 45, 100]} />
 
         {project ? (
           <DeferredContent>
@@ -440,15 +395,6 @@ export default function BuildingScene({ project }: BuildingSceneProps) {
           <OrbitControls />
         )}
 
-        <Grid
-          args={[50, 50]}
-          position={[0, -0.1, 0]}
-          cellSize={1}
-          cellColor="#444444"
-          sectionSize={5}
-          sectionColor="#666666"
-          fadeDistance={50}
-        />
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
           <GizmoViewport />
         </GizmoHelper>

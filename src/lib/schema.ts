@@ -20,6 +20,8 @@ export const RoomSchema = z.object({
   width: z.number().min(0.8).max(20).describe("Largura do comodo em metros"),
   depth: z.number().min(0.8).max(20).describe("Profundidade do comodo em metros"),
   height: z.number().min(2.2).max(6).default(2.8).describe("Pe-direito em metros"),
+  floorMaterial: z.string().default("porcelain_gray").describe("Material do piso").optional(),
+  wallColor: z.string().default("#ffffff").describe("Cor das paredes internas").optional(),
 });
 
 export const OpeningSchema = z.object({
@@ -29,6 +31,7 @@ export const OpeningSchema = z.object({
   width: z.number().min(0.6).max(6).describe("Largura da abertura em metros"),
   height: z.number().min(0.6).max(4).describe("Altura da abertura em metros"),
   elevation: z.number().min(0).default(0).describe("Altura do peitoril"),
+  subtype: z.enum(["fixed", "sliding", "pivot", "double", "garage"]).optional().describe("Subtipo da esquadria"),
 });
 
 export const RoofSchema = z.object({
@@ -41,6 +44,25 @@ export const MaterialsSchema = z.object({
   facade: z.string().default("concrete_white").describe("Material da fachada"),
   roof: z.string().default("concrete_gray").describe("Material da cobertura"),
   frames: z.string().default("aluminum_black").describe("Material das esquadrias"),
+});
+
+export const PoolSchema = z.object({
+  width: z.number().min(2).max(15).describe("Largura da piscina"),
+  depth: z.number().min(3).max(20).describe("Comprimento da piscina"),
+  x: z.number().describe("Posicao X da piscina"),
+  z: z.number().describe("Posicao Z da piscina"),
+});
+
+export const VegetationItemSchema = z.object({
+  type: z.enum(["tree", "bush", "palm"]).describe("Tipo de vegetacao"),
+  x: z.number().describe("Posicao X"),
+  z: z.number().describe("Posicao Z"),
+  scale: z.number().min(0.3).max(3).default(1).describe("Escala"),
+});
+
+export const FenceSchema = z.object({
+  height: z.number().min(0.5).max(4).default(1.8).describe("Altura do muro"),
+  material: z.string().default("block_gray").describe("Material do muro"),
 });
 
 export const BuildingStyle = z.enum(["modern", "colonial", "minimal", "contemporary"]);
@@ -64,6 +86,9 @@ export const ArchitecturalProjectSchema = z.object({
     roof: "concrete_gray",
     frames: "aluminum_black",
   }),
+  pool: PoolSchema.optional().describe("Piscina (quando feature 'pool' estiver presente)"),
+  vegetation: z.array(VegetationItemSchema).default([]).describe("Vegetacao no lote"),
+  fence: FenceSchema.optional().describe("Muro perimetral"),
   assumptions: z.array(z.string()).default([]).describe("Premissas inferidas pela IA"),
   confidence: z.number().min(0).max(1).default(0.8).describe("Confianca geral da geracao"),
 });
@@ -76,4 +101,7 @@ export type Room = z.infer<typeof RoomSchema>;
 export type Opening = z.infer<typeof OpeningSchema>;
 export type Roof = z.infer<typeof RoofSchema>;
 export type Materials = z.infer<typeof MaterialsSchema>;
+export type Pool = z.infer<typeof PoolSchema>;
+export type VegetationItem = z.infer<typeof VegetationItemSchema>;
+export type Fence = z.infer<typeof FenceSchema>;
 export type ArchitecturalProject = z.infer<typeof ArchitecturalProjectSchema>;

@@ -39,6 +39,9 @@ export function normalizeRawProject(raw: any): any {
       width: clamp(Number(room.width) || 3, 0.8, 20),
       depth: clamp(Number(room.depth) || 3, 0.8, 20),
       height: clamp(Number(room.height) || 2.8, 2.2, 6),
+      // Preserve optional fields
+      ...(room.floorMaterial && typeof room.floorMaterial === "string" ? { floorMaterial: room.floorMaterial } : {}),
+      ...(room.wallColor && typeof room.wallColor === "string" ? { wallColor: room.wallColor } : {}),
     }));
   }
 
@@ -56,6 +59,34 @@ export function normalizeRawProject(raw: any): any {
   if (raw.roof) {
     raw.roof.slope = clamp(Number(raw.roof.slope) || 0, 0, 60);
     raw.roof.overhang = clamp(Number(raw.roof.overhang) || 0.3, 0, 2);
+  }
+
+  // Normalize pool
+  if (raw.pool && typeof raw.pool === "object") {
+    raw.pool.width = clamp(Number(raw.pool.width) || 4, 2, 15);
+    raw.pool.depth = clamp(Number(raw.pool.depth) || 8, 3, 20);
+    raw.pool.x = Number(raw.pool.x) || 0;
+    raw.pool.z = Number(raw.pool.z) || 0;
+  }
+
+  // Normalize vegetation
+  if (Array.isArray(raw.vegetation)) {
+    raw.vegetation = raw.vegetation.map((v: Record<string, unknown>) => ({
+      type: ["tree", "bush", "palm"].includes(v.type as string) ? v.type : "tree",
+      x: Number(v.x) || 0,
+      z: Number(v.z) || 0,
+      scale: clamp(Number(v.scale) || 1, 0.3, 3),
+    }));
+  } else {
+    raw.vegetation = [];
+  }
+
+  // Normalize fence
+  if (raw.fence && typeof raw.fence === "object") {
+    raw.fence.height = clamp(Number(raw.fence.height) || 1.8, 0.5, 4);
+    if (!raw.fence.material || typeof raw.fence.material !== "string") {
+      raw.fence.material = "block_gray";
+    }
   }
 
   // Normalize confidence

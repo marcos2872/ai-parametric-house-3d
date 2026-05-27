@@ -71,10 +71,14 @@ export function generateFallbackProject(prompt: string): ArchitecturalProject {
 
   const hasGarage = /garag/i.test(prompt);
   const hasBalcony = /varand|balcon/i.test(prompt);
+  const hasPool = /piscin|pool/i.test(prompt);
+  const hasGarden = /jardi|garden/i.test(prompt);
 
   const features: ("garage" | "balcony" | "pool" | "garden" | "stairs" | "terrace")[] = [];
   if (hasGarage) features.push("garage");
   if (hasBalcony) features.push("balcony");
+  if (hasPool) features.push("pool");
+  if (hasGarden) features.push("garden");
   if (stories > 1) features.push("stairs");
 
   const bedroomCount = prompt.match(/(\d+)\s*(quarto|bedroom|bed)/i);
@@ -117,17 +121,45 @@ export function generateFallbackProject(prompt: string): ArchitecturalProject {
   const footprintWidth = Math.max(8, ...rooms.filter((r) => r.floor === 0).map((r) => r.x + r.width));
   const footprintDepth = Math.max(10, ...rooms.filter((r) => r.floor === 0).map((r) => r.z + r.depth));
 
+  // Pool (when requested)
+  const pool = hasPool
+    ? { width: 4, depth: 8, x: footprintWidth + 2, z: 2 }
+    : undefined;
+
+  // Vegetation (always add a few trees for realism)
+  const vegetation: { type: "tree" | "bush" | "palm"; x: number; z: number; scale: number }[] = [
+    { type: "tree", x: -2, z: footprintDepth + 2, scale: 1.2 },
+    { type: "bush", x: footprintWidth + 1, z: 0, scale: 0.8 },
+    { type: "tree", x: footprintWidth + 1, z: footprintDepth + 2, scale: 1 },
+  ];
+  if (hasGarden) {
+    vegetation.push(
+      { type: "bush", x: -1.5, z: 2, scale: 0.7 },
+      { type: "palm", x: footprintWidth + 3, z: footprintDepth / 2, scale: 1.1 },
+    );
+  }
+
+  // Fence
+  const fence = { height: 1.8, material: "block_gray" };
+
   return {
     buildingType: "house",
     stories,
     style,
-    lot: { width: footprintWidth + 4, depth: footprintDepth + 8 },
+    lot: { width: footprintWidth + 6, depth: footprintDepth + 10 },
     footprint: { width: footprintWidth, depth: footprintDepth },
     rooms,
-    openings: [],
+    openings: [
+      { type: "window" as const, room: "living", wall: "south" as const, width: 2.5, height: 1.5, elevation: 0.9 },
+      { type: "window" as const, room: "kitchen", wall: "east" as const, width: 1.5, height: 1.2, elevation: 1.0 },
+      { type: "door" as const, room: "living", wall: "west" as const, width: 0.9, height: 2.1, elevation: 0 },
+    ],
     features,
     roof: defaults.roof,
     materials: defaults.materials,
+    pool,
+    vegetation,
+    fence,
     assumptions: [
       "Dimensoes inferidas a partir de padroes residenciais brasileiros",
       `Estilo: ${style}`,
