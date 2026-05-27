@@ -88,65 +88,63 @@ function FlatRoof({ w, d, yPos, overhang, roofMat }: {
 }
 
 // --- Gable roof (two slopes) ---
+// Ridge runs along Z (depth). Slopes descend in X (width).
+// Empenas (^ shape) visible from front (Z=0) and back (Z=d).
 function GableRoof({ w, d, yPos, overhang, slope, roofMat }: {
   w: number; d: number; yPos: number; overhang: number; slope: number;
   roofMat: ReturnType<typeof getMaterial>;
 }) {
-  const geometry = useMemo(() => {
+  const geo = useMemo(() => {
     const slopeRad = (slope * Math.PI) / 180;
-    const ridgeHeight = Math.tan(slopeRad) * (d / 2);
-    const panelLength = (d / 2) / Math.cos(slopeRad);
-    const totalW = w + overhang * 2;
-    const totalPanel = panelLength + overhang;
+    // Ridge height determined by half-width (slopes descend over w/2)
+    const ridgeHeight = Math.tan(slopeRad) * (w / 2);
+    // Each slope panel goes from ridge to eave + overhang
+    const panelLength = (w / 2) / Math.cos(slopeRad) + overhang;
+    // Panel extends along Z with overhang on front/back
+    const totalD = d + overhang * 2;
+    const halfPanel = panelLength / 2;
 
-    // Create a shape for the gable end (triangular)
-    const shape = new THREE.Shape();
-    shape.moveTo(-totalW / 2, 0);
-    shape.lineTo(totalW / 2, 0);
-    shape.lineTo(totalW / 2, 0);
-    shape.lineTo(-totalW / 2, 0);
+    // Position panels so ridge-edge meets at (0, ridgeHeight, 0)
+    const panelY = ridgeHeight - Math.sin(slopeRad) * halfPanel;
+    const panelXLeft = -Math.cos(slopeRad) * halfPanel;
+    const panelXRight = Math.cos(slopeRad) * halfPanel;
 
-    return { slopeRad, ridgeHeight, totalW, totalPanel };
+    return { slopeRad, ridgeHeight, totalD, panelLength, panelY, panelXLeft, panelXRight };
   }, [w, d, overhang, slope]);
 
-  const { slopeRad, ridgeHeight, totalW, totalPanel } = geometry;
+  const { slopeRad, ridgeHeight, totalD, panelLength, panelY, panelXLeft, panelXRight } = geo;
   const cx = w / 2;
   const cz = d / 2;
 
   return (
     <group position={[cx, yPos + SLAB_THICKNESS * 0.5, cz]}>
-      {/* Front slope */}
-      <mesh position={[0, ridgeHeight / 2, -d / 4]} rotation={[slopeRad, 0, 0]}>
-        <boxGeometry args={[totalW, 0.08, totalPanel]} />
+      {/* Ceiling plane (laje forro) — hides internal walls from outside */}
+      <mesh position={[0, -0.02, 0]}>
+        <boxGeometry args={[w, 0.04, d]} />
+        <meshStandardMaterial color="#f0f0f0" roughness={0.9} metalness={0} />
+      </mesh>
+
+      {/* Left slope — rotates around Z, +X edge (ridge) goes UP */}
+      <mesh position={[panelXLeft, panelY, 0]} rotation={[0, 0, slopeRad]}>
+        <boxGeometry args={[panelLength, 0.08, totalD]} />
         <meshStandardMaterial color={roofMat.color} roughness={roofMat.roughness} metalness={roofMat.metalness} />
       </mesh>
 
-      {/* Back slope */}
-      <mesh position={[0, ridgeHeight / 2, d / 4]} rotation={[-slopeRad, 0, 0]}>
-        <boxGeometry args={[totalW, 0.08, totalPanel]} />
+      {/* Right slope — rotates around Z, -X edge (ridge) goes UP */}
+      <mesh position={[panelXRight, panelY, 0]} rotation={[0, 0, -slopeRad]}>
+        <boxGeometry args={[panelLength, 0.08, totalD]} />
         <meshStandardMaterial color={roofMat.color} roughness={roofMat.roughness} metalness={roofMat.metalness} />
       </mesh>
 
-      {/* Ridge beam (cumeeira) */}
+      {/* Ridge beam (cumeeira) — runs along Z */}
       <mesh position={[0, ridgeHeight, 0]}>
-        <boxGeometry args={[totalW + 0.1, 0.06, 0.06]} />
+        <boxGeometry args={[0.06, 0.06, totalD + 0.1]} />
         <meshStandardMaterial color="#5d4037" roughness={0.7} metalness={0} />
       </mesh>
 
-      {/* Forro inferior (soffit) — frente */}
-      <mesh position={[0, 0, -(d / 2 + overhang / 2)]}>
-        <boxGeometry args={[totalW, 0.03, overhang]} />
-        <meshStandardMaterial color="#f5f5f5" roughness={0.8} metalness={0} />
-      </mesh>
-      {/* Forro inferior — fundos */}
-      <mesh position={[0, 0, (d / 2 + overhang / 2)]}>
-        <boxGeometry args={[totalW, 0.03, overhang]} />
-        <meshStandardMaterial color="#f5f5f5" roughness={0.8} metalness={0} />
-      </mesh>
-
-      {/* Gable end walls (empenas triangulares) — simplificado como triângulo flat */}
-      <GableTriangle width={totalW} height={ridgeHeight} z={-d / 2} />
-      <GableTriangle width={totalW} height={ridgeHeight} z={d / 2} />
+      {/* Gable end walls (empenas) — front and back, ^ visible from Z direction */}
+      <GableTriangle width={w} height={ridgeHeight} z={-d / 2} />
+      <GableTriangle width={w} height={ridgeHeight} z={d / 2} />
     </group>
   );
 }
@@ -161,9 +159,8 @@ function GableTriangle({ width, height, z }: { width: number; height: number; z:
     shape.closePath();
 
     const geo = new THREE.ShapeGeometry(shape);
-    // Rotate from XY plane to XY at position Z
-    geo.rotateX(Math.PI / 2);
-    geo.translate(0, height / 3, z);
+    // ShapeGeometry is already in XY plane (vertical), just translate to correct Z
+    geo.translate(0, 0, z);
     return geo;
   }, [width, height, z]);
 
