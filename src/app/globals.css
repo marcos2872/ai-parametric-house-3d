@@ -1,0 +1,339 @@
+:root {
+  --bg-primary: #0f0f1a;
+  --bg-sidebar: #1a1a2e;
+  --bg-input: #16213e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --accent: #4fc3f7;
+  --accent-hover: #81d4fa;
+  --success: #66bb6a;
+  --warning: #ffa726;
+  --error: #ef5350;
+  --border: #2a2a4a;
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- Layout --- */
+.app-layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.sidebar {
+  width: 360px;
+  min-width: 360px;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.viewport {
+  flex: 1;
+  height: 100vh;
+  position: relative;
+}
+
+/* --- Title --- */
+.app-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.app-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+/* --- Prompt Form --- */
+.prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prompt-form label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.prompt-form textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 70px;
+  font-family: inherit;
+}
+
+.prompt-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.prompt-form button[type="submit"] {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.prompt-form button[type="submit"]:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.prompt-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.examples span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  width: 100%;
+}
+
+.example-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.example-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+/* --- Editor --- */
+.project-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.project-editor section {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.project-editor h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--accent);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.field label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.field select,
+.field input[type="range"] {
+  width: 100%;
+}
+
+.field select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.field input[type="range"] {
+  accent-color: var(--accent);
+}
+
+/* --- Status --- */
+.status {
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.status.ai {
+  background: rgba(102, 187, 106, 0.1);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.status.fallback {
+  background: rgba(255, 167, 38, 0.1);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+}
+
+.error-msg {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+/* --- Rooms list --- */
+.rooms-list {
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.rooms-list li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- Tags --- */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tag {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+}
+
+/* --- Assumptions --- */
+.assumptions {
+  list-style: disc;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* --- JSON --- */
+.toggle-json {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.toggle-json:hover {
+  border-color: var(--accent);
+}
+
+.json-viewer {
+  margin-top: 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font-size: 0.7rem;
+  font-family: var(--font-geist-mono), monospace;
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* --- Scene states --- */
+.scene-empty,
+.scene-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.scene-empty-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  pointer-events: none;
+  text-align: center;
+}
+
+/* --- Delete button --- */
+.delete-btn {
+  background: transparent;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  color: var(--error);
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  margin-top: 0.5rem;
+}
+
+.delete-btn:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+/* --- Scrollbar --- */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: var(--bg-sidebar);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
