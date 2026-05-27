@@ -306,6 +306,132 @@ function FloorSlabs({ project }: { project: ArchitecturalProject }) {
   );
 }
 
+// --- Room name translation (EN → pt-BR) ---
+const ROOM_NAMES_PTBR: Record<string, string> = {
+  "living room": "Sala de Estar",
+  "living": "Sala de Estar",
+  "dining room": "Sala de Jantar",
+  "dining": "Sala de Jantar",
+  "kitchen": "Cozinha",
+  "bedroom": "Quarto",
+  "bathroom": "Banheiro",
+  "wc": "Lavabo",
+  "lavatory": "Lavabo",
+  "garage": "Garagem",
+  "hallway": "Corredor",
+  "corridor": "Corredor",
+  "service area": "Área de Serviço",
+  "laundry": "Lavanderia",
+  "office": "Escritório",
+  "study": "Escritório",
+  "pantry": "Despensa",
+  "closet": "Closet",
+  "suite": "Suíte",
+  "master bedroom": "Suíte Master",
+  "master suite": "Suíte Master",
+  "balcony": "Varanda",
+  "porch": "Varanda",
+  "veranda": "Varanda",
+  "terrace": "Terraço",
+  "pool area": "Área da Piscina",
+  "home theater": "Home Theater",
+  "utility": "Utilidades",
+  "storage": "Depósito",
+};
+
+function translateRoomName(name: string): string {
+  // Try exact match (lowercase)
+  const lower = name.toLowerCase().trim();
+  if (ROOM_NAMES_PTBR[lower]) return ROOM_NAMES_PTBR[lower];
+
+  // Try matching base name with number suffix (e.g. "Bedroom 2" → "Quarto 2")
+  const match = lower.match(/^(.+?)(\d+)$/);
+  if (match) {
+    const baseName = match[1].trim();
+    const num = match[2];
+    if (ROOM_NAMES_PTBR[baseName]) return `${ROOM_NAMES_PTBR[baseName]} ${num}`;
+  }
+
+  // Try partial match (first word)
+  const firstWord = lower.split(/[\s_-]/)[0];
+  if (ROOM_NAMES_PTBR[firstWord]) {
+    const suffix = name.replace(new RegExp(`^${firstWord}\\s*`, "i"), "").trim();
+    return suffix ? `${ROOM_NAMES_PTBR[firstWord]} ${suffix}` : ROOM_NAMES_PTBR[firstWord];
+  }
+
+  // Return original if no translation found
+  return name;
+}
+
+// --- Room labels on floor (CanvasTexture approach — GPU-friendly) ---
+function RoomLabel({ room, yBase }: { room: Room; yBase: number }) {
+  const texture = useMemo(() => {
+    const label = translateRoomName(room.name);
+    const dims = `${room.width} × ${room.depth}m`;
+
+    const canvas = document.createElement("canvas");
+    const size = 256;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+
+    // Transparent background
+    ctx.clearRect(0, 0, size, size);
+
+    // Text styling
+    ctx.fillStyle = "#333333";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Room name (larger)
+    ctx.font = "bold 36px sans-serif";
+    ctx.fillText(label, size / 2, size / 2 - 18, size - 20);
+
+    // Dimensions (smaller, below)
+    ctx.font = "28px sans-serif";
+    ctx.fillStyle = "#666666";
+    ctx.fillText(dims, size / 2, size / 2 + 22, size - 20);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, [room.name, room.width, room.depth]);
+
+  const cx = room.x + room.width / 2;
+  const cz = room.z + room.depth / 2;
+  const minSide = Math.min(room.width, room.depth);
+  // Scale plane to fit inside the room
+  const planeSize = Math.max(0.8, minSide * 0.7);
+
+  return (
+    <mesh
+      position={[cx, yBase + SLAB_THICKNESS / 2 + 0.005, cz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <planeGeometry args={[planeSize, planeSize]} />
+      <meshBasicMaterial map={texture} transparent opacity={0.85} depthWrite={false} />
+    </mesh>
+  );
+}
+
+function RoomLabels({ project }: { project: ArchitecturalProject }) {
+  const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
+  return (
+    <>
+      {project.rooms.map((room) => {
+        const yBase = room.floor * styleDefaults.floorHeight;
+        return (
+          <RoomLabel
+            key={`label-${room.name}-${room.floor}`}
+            room={room}
+            yBase={yBase}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 // --- Deferred content loader (waits 1 frame before rendering heavy content) ---
 function DeferredContent({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -327,6 +453,7 @@ function BuildingContent({ project, roofVisible }: { project: ArchitecturalProje
     <>
       <Terrain project={project} />
       <FloorSlabs project={project} />
+      <RoomLabels project={project} />
       <MergedWalls project={project} facadeMat={facadeMat} />
       <WallsWithOpenings project={project} facadeMat={facadeMat} />
       <OpeningsGroup project={project} />
