@@ -4,8 +4,9 @@ import React, { useRef, useState, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import * as THREE from "three";
-import type { ArchitecturalProject, Room, Opening } from "@/lib/schema";
+import type { ArchitecturalProject, Room } from "@/lib/schema";
 import { STYLE_DEFAULTS } from "@/lib/defaults";
+import { isOpenRoom } from "@/lib/geometry-validation";
 import { getMaterial, type PBRMaterialDef } from "@/lib/material-system";
 
 // Sub-components
@@ -19,6 +20,133 @@ import Vegetation from "./three/Vegetation";
 // --- Constants ---
 const WALL_THICKNESS = 0.15;
 const SLAB_THICKNESS = 0.15;
+
+// --- Helper: compute wall positions suppressed by internal openings ---
+// An internal door on Room A's wall also suppresses the adjacent Room B's wall at the same position
+type WallKey = string; // "roomName|direction"
+type Range = [number, number];
+
+function subtractRanges(base: Range, holes: Range[]): Range[] {
+  // Subtract a list of holes from a base range, returning remaining segments.
+  // Inputs/outputs are in "wall length" coordinates (0..wallLength).
+  let segs: Range[] = [base];
+  for (const [hs, he] of holes) {
+    const next: Range[] = [];
+    for (const [ss, se] of segs) {
+      if (he <= ss || hs >= se) {
+        next.push([ss, se]);
+        continue;
+      }
+      if (hs > ss) next.push([ss, Math.min(hs, se)]);
+      if (he < se) next.push([Math.max(he, ss), se]);
+    }
+    segs = next.filter(([s, e]) => e - s > 0.05);
+  }
+  return segs;
+}
+
+// Returns, for each room+wall, the local ranges (along the wall length) that
+// are claimed by a NEIGHBOUR room. The cômodo that declares an opening on the
+// shared wall is the OWNER (it renders the wall with the opening cut out). If
+// neither side has an opening on that boundary, the cômodo earlier in the
+// array order is the owner. The owner renders; the other side reports the
+// segment as covered and skips it. This avoids z-fighting while ensuring the
+// divider is always rendered exactly once.
+function getCoveredRanges(project: ArchitecturalProject): Map<WallKey, Range[]> {
+  const map = new Map<WallKey, Range[]>();
+  const rooms = project.rooms.filter((room) => !isOpenRoom(room));
+
+  function addCover(roomName: string, dir: "south" | "north" | "west" | "east", min: number, max: number, wallStart: number) {
+    const key = `${roomName}|${dir}`;
+    const local: Range = [min - wallStart, max - wallStart];
+    const list = map.get(key) ?? [];
+    list.push(local);
+    map.set(key, list);
+  }
+
+  function hasOpeningOnWall(roomName: string, dir: "south" | "north" | "west" | "east"): boolean {
+    return project.openings.some((o) => o.room === roomName && o.wall === dir);
+  }
+
+  for (let i = 0; i < rooms.length; i++) {
+    const a = rooms[i];
+    for (let j = i + 1; j < rooms.length; j++) {
+      const b = rooms[j];
+
+      // a.east shared with b.west (vertical walls)
+      if (Math.abs((a.x + a.width) - b.x) < 0.05) {
+        const min = Math.max(a.z, b.z);
+        const max = Math.min(a.z + a.depth, b.z + b.depth);
+        if (max - min > 0.05) {
+          // owner = whoever declares an opening; default = a (earlier).
+          const aHas = hasOpeningOnWall(a.name, "east");
+          const bHas = hasOpeningOnWall(b.name, "west");
+          if (bHas && !aHas) addCover(a.name, "east", min, max, a.z);
+          else addCover(b.name, "west", min, max, b.z);
+        }
+      }
+      // b.east shared with a.west
+      if (Math.abs((b.x + b.width) - a.x) < 0.05) {
+        const min = Math.max(a.z, b.z);
+        const max = Math.min(a.z + a.depth, b.z + b.depth);
+        if (max - min > 0.05) {
+          const aHas = hasOpeningOnWall(a.name, "west");
+          const bHas = hasOpeningOnWall(b.name, "east");
+          if (aHas && !bHas) addCover(b.name, "east", min, max, b.z);
+          else addCover(a.name, "west", min, max, a.z);
+        }
+      }
+      // a.north shared with b.south (horizontal walls)
+      if (Math.abs((a.z + a.depth) - b.z) < 0.05) {
+        const min = Math.max(a.x, b.x);
+        const max = Math.min(a.x + a.width, b.x + b.width);
+        if (max - min > 0.05) {
+          const aHas = hasOpeningOnWall(a.name, "north");
+          const bHas = hasOpeningOnWall(b.name, "south");
+          if (bHas && !aHas) addCover(a.name, "north", min, max, a.x);
+          else addCover(b.name, "south", min, max, b.x);
+        }
+      }
+      // b.north shared with a.south
+      if (Math.abs((b.z + b.depth) - a.z) < 0.05) {
+        const min = Math.max(a.x, b.x);
+        const max = Math.min(a.x + a.width, b.x + b.width);
+        if (max - min > 0.05) {
+          const aHas = hasOpeningOnWall(a.name, "south");
+          const bHas = hasOpeningOnWall(b.name, "north");
+          if (aHas && !bHas) addCover(b.name, "north", min, max, b.x);
+          else addCover(a.name, "south", min, max, a.x);
+        }
+      }
+    }
+  }
+
+  return map;
+}
+
+// Wall is fully suppressed when every part is covered by a neighbor that owns
+// the shared segment.
+function getSuppressedWalls(project: ArchitecturalProject): Set<WallKey> {
+  const suppressed = new Set<WallKey>();
+  const rooms = project.rooms.filter((room) => !isOpenRoom(room));
+  const covered = getCoveredRanges(project);
+
+  for (const room of rooms) {
+    const sides: Array<{ dir: "south" | "north" | "west" | "east"; len: number }> = [
+      { dir: "south", len: room.width },
+      { dir: "north", len: room.width },
+      { dir: "west", len: room.depth },
+      { dir: "east", len: room.depth },
+    ];
+    for (const { dir, len } of sides) {
+      const ranges = covered.get(`${room.name}|${dir}`) ?? [];
+      const remaining = subtractRanges([0, len], ranges);
+      if (remaining.length === 0) suppressed.add(`${room.name}|${dir}`);
+    }
+  }
+
+  return suppressed;
+}
 
 // --- Simple merge geometries utility ---
 function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -77,8 +205,12 @@ function MergedWalls({ project, facadeMat }: { project: ArchitecturalProject; fa
 
   const geometry = useMemo(() => {
     const geometries: THREE.BoxGeometry[] = [];
+    const suppressed = getSuppressedWalls(project);
+    const covered = getCoveredRanges(project);
 
     for (const room of project.rooms) {
+      if (isOpenRoom(room)) continue;
+
       const yBase = room.floor * styleDefaults.floorHeight;
       const h = room.height;
       const w = room.width;
@@ -87,18 +219,40 @@ function MergedWalls({ project, facadeMat }: { project: ArchitecturalProject; fa
 
       const roomOpenings = project.openings.filter((o) => o.room === room.name);
 
-      const wallDefs = [
-        { dir: "south" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z, sx: w, sy: h, sz: t },
-        { dir: "north" as const, px: room.x + w / 2, py: yBase + h / 2, pz: room.z + d, sx: w, sy: h, sz: t },
-        { dir: "west" as const, px: room.x, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
-        { dir: "east" as const, px: room.x + w, py: yBase + h / 2, pz: room.z + d / 2, sx: t, sy: h, sz: d },
+      // Each wall: dir, isXWall (length along X) or not, length, position function for sub-range.
+      const wallDefs: Array<{ dir: "south" | "north" | "west" | "east"; isX: boolean; len: number }> = [
+        { dir: "south", isX: true, len: w },
+        { dir: "north", isX: true, len: w },
+        { dir: "west", isX: false, len: d },
+        { dir: "east", isX: false, len: d },
       ];
 
       for (const wall of wallDefs) {
-        const hasOpening = roomOpenings.some((o) => o.wall === wall.dir);
-        if (!hasOpening) {
-          const geo = new THREE.BoxGeometry(wall.sx, wall.sy, wall.sz);
-          const mat = new THREE.Matrix4().makeTranslation(wall.px, wall.py, wall.pz);
+        if (suppressed.has(`${room.name}|${wall.dir}`)) continue;
+        if (roomOpenings.some((o) => o.wall === wall.dir)) continue; // handled by WallsWithOpenings
+
+        const coveredRanges = covered.get(`${room.name}|${wall.dir}`) ?? [];
+        const segments = subtractRanges([0, wall.len], coveredRanges);
+        for (const [s, e] of segments) {
+          const segLen = e - s;
+          if (segLen <= 0.05) continue;
+          let px: number, pz: number, sx: number, sz: number;
+          if (wall.isX) {
+            // wall runs along X; s..e are X offsets within the room
+            px = room.x + s + segLen / 2;
+            pz = wall.dir === "south" ? room.z : room.z + d;
+            sx = segLen;
+            sz = t;
+          } else {
+            // wall runs along Z; s..e are Z offsets within the room
+            px = wall.dir === "west" ? room.x : room.x + w;
+            pz = room.z + s + segLen / 2;
+            sx = t;
+            sz = segLen;
+          }
+          const py = yBase + h / 2;
+          const geo = new THREE.BoxGeometry(sx, h, sz);
+          const mat = new THREE.Matrix4().makeTranslation(px, py, pz);
           geo.applyMatrix4(mat);
           geometries.push(geo);
         }
@@ -127,6 +281,7 @@ function MergedWalls({ project, facadeMat }: { project: ArchitecturalProject; fa
 // --- Openings (windows & doors) using proper geometry ---
 function OpeningsGroup({ project }: { project: ArchitecturalProject }) {
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
+  const suppressed = getSuppressedWalls(project);
 
   if (project.openings.length === 0) return null;
 
@@ -135,12 +290,15 @@ function OpeningsGroup({ project }: { project: ArchitecturalProject }) {
       {project.openings.map((op, i) => {
         const room = project.rooms.find((r) => r.name === op.room);
         if (!room) return null;
+        if (isOpenRoom(room)) return null;
+        // Skip openings on suppressed walls
+        if (suppressed.has(`${room.name}|${op.wall}`)) return null;
 
         const yBase = room.floor * styleDefaults.floorHeight;
         const isXWall = op.wall === "south" || op.wall === "north";
 
-        let px: number, py: number, pz: number;
-        py = yBase + op.elevation + op.height / 2;
+        let px: number, pz: number;
+        const py = yBase + op.elevation + op.height / 2;
 
         if (op.wall === "south") {
           px = room.x + room.width / 2;
@@ -186,8 +344,11 @@ function OpeningsGroup({ project }: { project: ArchitecturalProject }) {
 function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProject; facadeMat: PBRMaterialDef }) {
   const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
   const segments: React.ReactNode[] = [];
+  const suppressed = getSuppressedWalls(project);
 
   for (const room of project.rooms) {
+    if (isOpenRoom(room)) continue;
+
     const roomOpenings = project.openings.filter((o) => o.room === room.name);
     if (roomOpenings.length === 0) continue;
 
@@ -197,9 +358,17 @@ function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProje
     const d = room.depth;
     const t = WALL_THICKNESS;
 
-    for (const op of roomOpenings) {
+    for (let opIdx = 0; opIdx < roomOpenings.length; opIdx++) {
+      const op = roomOpenings[opIdx];
+      // Skip openings on suppressed walls (adjacent room already renders this boundary)
+      if (suppressed.has(`${room.name}|${op.wall}`)) continue;
       const isXWall = op.wall === "south" || op.wall === "north";
       const wallLength = isXWall ? w : d;
+      // Internal doors use room wallColor, external use facade
+      const wallColor = op.internal ? (room.wallColor || "#ffffff") : facadeMat.color;
+      const wallRoughness = op.internal ? 0.9 : facadeMat.roughness;
+      const wallMetalness = op.internal ? 0 : facadeMat.metalness;
+      const keyPrefix = `${room.name}-${op.wall}-${opIdx}`;
 
       let wallPx: number, wallPz: number;
       if (op.wall === "south") { wallPx = room.x + w / 2; wallPz = room.z; }
@@ -218,9 +387,9 @@ function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProje
           ? [wallLength, aboveH, t]
           : [t, aboveH, wallLength];
         segments.push(
-          <mesh key={`${room.name}-${op.wall}-above-${op.type}`} position={[wallPx, ay, wallPz]}>
+          <mesh key={`${keyPrefix}-above`} position={[wallPx, ay, wallPz]}>
             <boxGeometry args={args} />
-            <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+            <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
           </mesh>
         );
       }
@@ -232,9 +401,9 @@ function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProje
           ? [wallLength, opElev, t]
           : [t, opElev, wallLength];
         segments.push(
-          <mesh key={`${room.name}-${op.wall}-below-${op.type}`} position={[wallPx, by, wallPz]}>
+          <mesh key={`${keyPrefix}-below`} position={[wallPx, by, wallPz]}>
             <boxGeometry args={args} />
-            <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+            <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
           </mesh>
         );
       }
@@ -245,28 +414,28 @@ function WallsWithOpenings({ project, facadeMat }: { project: ArchitecturalProje
         const sideY = yBase + opElev + opH / 2;
         if (isXWall) {
           segments.push(
-            <mesh key={`${room.name}-${op.wall}-left`} position={[wallPx - wallLength / 2 + sideW / 2, sideY, wallPz]}>
+            <mesh key={`${keyPrefix}-left`} position={[wallPx - wallLength / 2 + sideW / 2, sideY, wallPz]}>
               <boxGeometry args={[sideW, opH, t]} />
-              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+              <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
             </mesh>
           );
           segments.push(
-            <mesh key={`${room.name}-${op.wall}-right`} position={[wallPx + wallLength / 2 - sideW / 2, sideY, wallPz]}>
+            <mesh key={`${keyPrefix}-right`} position={[wallPx + wallLength / 2 - sideW / 2, sideY, wallPz]}>
               <boxGeometry args={[sideW, opH, t]} />
-              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+              <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
             </mesh>
           );
         } else {
           segments.push(
-            <mesh key={`${room.name}-${op.wall}-left`} position={[wallPx, sideY, wallPz - wallLength / 2 + sideW / 2]}>
+            <mesh key={`${keyPrefix}-left`} position={[wallPx, sideY, wallPz - wallLength / 2 + sideW / 2]}>
               <boxGeometry args={[t, opH, sideW]} />
-              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+              <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
             </mesh>
           );
           segments.push(
-            <mesh key={`${room.name}-${op.wall}-right`} position={[wallPx, sideY, wallPz + wallLength / 2 - sideW / 2]}>
+            <mesh key={`${keyPrefix}-right`} position={[wallPx, sideY, wallPz + wallLength / 2 - sideW / 2]}>
               <boxGeometry args={[t, opH, sideW]} />
-              <meshStandardMaterial color={facadeMat.color} roughness={facadeMat.roughness} metalness={facadeMat.metalness} />
+              <meshStandardMaterial color={wallColor} roughness={wallRoughness} metalness={wallMetalness} />
             </mesh>
           );
         }
@@ -378,6 +547,12 @@ function RoomLabel({ room, yBase }: { room: Room; yBase: number }) {
     // Transparent background
     ctx.clearRect(0, 0, size, size);
 
+    // Rotate 180° so text reads correctly when plane lies flat (rotation -PI/2 on X)
+    // and camera looks from +Z side (default front view).
+    ctx.translate(size / 2, size / 2);
+    ctx.rotate(Math.PI);
+    ctx.translate(-size / 2, -size / 2);
+
     // Text styling
     ctx.fillStyle = "#333333";
     ctx.textAlign = "center";
@@ -409,7 +584,7 @@ function RoomLabel({ room, yBase }: { room: Room; yBase: number }) {
       rotation={[-Math.PI / 2, 0, 0]}
     >
       <planeGeometry args={[planeSize, planeSize]} />
-      <meshBasicMaterial map={texture} transparent opacity={0.85} depthWrite={false} />
+      <meshBasicMaterial map={texture} transparent opacity={0.85} depthWrite={false} side={THREE.DoubleSide} />
     </mesh>
   );
 }
@@ -445,9 +620,6 @@ function DeferredContent({ children }: { children: React.ReactNode }) {
 // --- Building content ---
 function BuildingContent({ project, roofVisible }: { project: ArchitecturalProject; roofVisible: boolean }) {
   const facadeMat = getMaterial(project.materials.facade);
-  const styleDefaults = STYLE_DEFAULTS[project.style] || STYLE_DEFAULTS.modern;
-  const centerX = project.footprint.width / 2;
-  const centerZ = project.footprint.depth / 2;
 
   return (
     <>
@@ -467,7 +639,6 @@ function BuildingContent({ project, roofVisible }: { project: ArchitecturalProje
         <Vegetation items={project.vegetation} />
       )}
 
-      <OrbitControls target={[centerX, styleDefaults.floorHeight, centerZ]} />
     </>
   );
 }
@@ -519,9 +690,14 @@ export default function BuildingScene({ project, roofVisible = true }: BuildingS
           <DeferredContent>
             <BuildingContent project={project} roofVisible={roofVisible} />
           </DeferredContent>
-        ) : (
-          <OrbitControls />
-        )}
+        ) : null}
+
+        <OrbitControls
+          target={project
+            ? [project.footprint.width / 2, (STYLE_DEFAULTS[project.style]?.floorHeight ?? 2.8), project.footprint.depth / 2]
+            : [0, 0, 0]
+          }
+        />
 
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
           <GizmoViewport />

@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import PromptForm from "@/components/PromptForm";
 import ProjectEditor from "@/components/ProjectEditor";
+import ThinkingBlock, { type StreamingPhase } from "@/components/ThinkingBlock";
 import type { ArchitecturalProject } from "@/lib/schema";
+import { findOverlappingRooms } from "@/lib/geometry-validation";
 
 const STORAGE_KEY = "civil3d_project";
 
@@ -49,33 +51,58 @@ function clearStorage() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+function getGeometryError(project: ArchitecturalProject): string | undefined {
+  const overlaps = findOverlappingRooms(project);
+  if (overlaps.length === 0) return undefined;
+  return `Projeto com comodos sobrepostos: ${overlaps.join(", ")}`;
+}
+
+function getInitialState(): SavedState | null {
+  const saved = loadFromStorage();
+  if (!saved) return null;
+
+  if (getGeometryError(saved.project)) {
+    clearStorage();
+    return null;
+  }
+
+  return saved;
+}
+
 export default function Home() {
   const [project, setProject] = useState<ArchitecturalProject | null>(null);
   const [source, setSource] = useState<"ai" | "fallback">("fallback");
-  const [error, setError] = useState<string | undefined>();
+  const [error, setError] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [roofVisible, setRoofVisible] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+  const [thinking, setThinking] = useState("");
+  const [streamingPhase, setStreamingPhase] = useState<StreamingPhase>("idle");
 
-  // Load from localStorage on mount
+  // Load from localStorage after hydration (client-only)
   useEffect(() => {
-    const saved = loadFromStorage();
+    const saved = getInitialState();
     if (saved) {
       setProject(saved.project);
       setSource(saved.source);
       setError(saved.error);
     }
+    setHydrated(true);
   }, []);
 
-  // Save to localStorage whenever project changes
+  // Save to localStorage whenever project changes (skip first render)
   useEffect(() => {
+    if (!hydrated) return;
     if (project) {
       saveToStorage(project, source, error);
     }
-  }, [project, source, error]);
+  }, [project, source, error, hydrated]);
 
   const handleGenerate = async (prompt: string) => {
     setIsLoading(true);
     setError(undefined);
+    setThinking("");
+    setStreamingPhase("idle");
 
     try {
       const res = await fetch("/api/generate", {
@@ -89,12 +116,72 @@ export default function Home() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      const data: GenerateResult = await res.json();
-      setProject(data.project);
-      setSource(data.source);
-      setError(data.error);
+      const contentType = res.headers.get("content-type") || "";
+
+      if (contentType.includes("text/event-stream")) {
+        // SSE streaming response
+        setStreamingPhase("thinking");
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse complete SSE events from buffer
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || ""; // keep incomplete chunk
+
+          for (const block of lines) {
+            if (!block.trim()) continue;
+            const eventMatch = block.match(/^event:\s*(.+)$/m);
+            const dataMatch = block.match(/^data:\s*(.+)$/m);
+            if (!eventMatch || !dataMatch) continue;
+
+            const eventType = eventMatch[1];
+            const data = JSON.parse(dataMatch[1]);
+
+            switch (eventType) {
+              case "thinking":
+                setStreamingPhase("thinking");
+                setThinking((prev) => prev + data.content);
+                break;
+              case "content":
+                setStreamingPhase("generating");
+                break;
+              case "result": {
+                const geometryError = getGeometryError(data.project);
+                if (geometryError) {
+                  throw new Error(geometryError);
+                }
+                setProject(data.project);
+                setSource(data.source);
+                setError(data.error);
+                setStreamingPhase("done");
+                break;
+              }
+              case "error":
+                setError(data.error);
+                break;
+            }
+          }
+        }
+      } else {
+        // Plain JSON response (fallback mode)
+        const data: GenerateResult = await res.json();
+        const geometryError = getGeometryError(data.project);
+        if (geometryError) {
+          throw new Error(geometryError);
+        }
+        setProject(data.project);
+        setSource(data.source);
+        setError(data.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
+      setStreamingPhase("done");
     } finally {
       setIsLoading(false);
     }
@@ -119,6 +206,8 @@ export default function Home() {
         <p className="app-subtitle">Gerador Paramétrico de Edificações</p>
 
         <PromptForm onGenerate={handleGenerate} isLoading={isLoading} />
+
+        <ThinkingBlock content={thinking} phase={streamingPhase} />
 
         {project && (
           <>

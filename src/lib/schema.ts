@@ -32,6 +32,7 @@ export const OpeningSchema = z.object({
   height: z.number().min(0.6).max(4).describe("Altura da abertura em metros"),
   elevation: z.number().min(0).default(0).describe("Altura do peitoril"),
   subtype: z.enum(["fixed", "sliding", "pivot", "double", "garage"]).optional().describe("Subtipo da esquadria"),
+  internal: z.boolean().optional().describe("Porta interna entre comodos"),
 });
 
 export const RoofSchema = z.object({
