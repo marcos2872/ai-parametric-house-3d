@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import PromptForm from "@/components/PromptForm";
 import ProjectEditor from "@/components/ProjectEditor";
-import ThinkingBlock, { type StreamingPhase } from "@/components/ThinkingBlock";
+import ToastContainer, { useToast } from "@/components/Toast";
 import type { ArchitecturalProject } from "@/lib/schema";
 import { findOverlappingRooms } from "@/lib/geometry-validation";
+
+type StreamingPhase = "idle" | "thinking" | "generating" | "done";
 
 const STORAGE_KEY = "civil3d_project";
 
@@ -76,8 +78,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [roofVisible, setRoofVisible] = useState(true);
   const [hydrated, setHydrated] = useState(false);
-  const [thinking, setThinking] = useState("");
   const [streamingPhase, setStreamingPhase] = useState<StreamingPhase>("idle");
+  const [retryCount, setRetryCount] = useState(0);
+  const toast = useToast();
 
   // Load from localStorage after hydration (client-only)
   useEffect(() => {
@@ -101,8 +104,8 @@ export default function Home() {
   const handleGenerate = async (prompt: string) => {
     setIsLoading(true);
     setError(undefined);
-    setThinking("");
     setStreamingPhase("idle");
+    setRetryCount(0);
 
     try {
       const res = await fetch("/api/generate", {
@@ -146,7 +149,10 @@ export default function Home() {
             switch (eventType) {
               case "thinking":
                 setStreamingPhase("thinking");
-                setThinking((prev) => prev + data.content);
+                // Detect retry messages from server
+                if (data.content.includes("Tentativa")) {
+                  setRetryCount((prev) => prev + 1);
+                }
                 break;
               case "content":
                 setStreamingPhase("generating");
@@ -158,11 +164,15 @@ export default function Home() {
                 }
                 setProject(data.project);
                 setSource(data.source);
+                if (data.error) {
+                  toast.show(data.error, "warning");
+                }
                 setError(data.error);
                 setStreamingPhase("done");
                 break;
               }
               case "error":
+                toast.show(data.error, "error");
                 setError(data.error);
                 break;
             }
@@ -180,7 +190,9 @@ export default function Home() {
         setError(data.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro desconhecido");
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.show(msg, "error");
+      setError(msg);
       setStreamingPhase("done");
     } finally {
       setIsLoading(false);
@@ -200,6 +212,8 @@ export default function Home() {
 
   return (
     <div className="app-layout">
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
+
       {/* Sidebar */}
       <aside className="sidebar">
         <h1 className="app-title">Civil 3D</h1>
@@ -207,7 +221,20 @@ export default function Home() {
 
         <PromptForm onGenerate={handleGenerate} isLoading={isLoading} />
 
-        <ThinkingBlock content={thinking} phase={streamingPhase} />
+        {isLoading && (
+          <div className="generation-status">
+            <span className="generation-status__dot" />
+            <span className="generation-status__text">
+              {streamingPhase === "thinking" && "Analisando prompt..."}
+              {streamingPhase === "generating" && (
+                retryCount > 0
+                  ? `Corrigindo layout (tentativa ${retryCount + 1})...`
+                  : "Gerando projeto..."
+              )}
+              {streamingPhase === "idle" && "Conectando..."}
+            </span>
+          </div>
+        )}
 
         {project && (
           <>
